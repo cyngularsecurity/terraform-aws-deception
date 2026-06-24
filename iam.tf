@@ -46,10 +46,14 @@ resource "aws_iam_role" "decoy" {
 
   name = "${var.iam_role.name_prefix}-${random_id.iam_role[each.key].hex}"
 
-  # Empty Statement list — no principal can assume this role.
+  # Non-existent account — trust policy is valid but nobody can assume this role.
   assume_role_policy = jsonencode({
-    Version   = "2012-10-17"
-    Statement = []
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { AWS = "arn:aws:iam::000000000000:root" }
+      Action    = "sts:AssumeRole"
+    }]
   })
 
   tags = local.common_tags
