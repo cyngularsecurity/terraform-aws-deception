@@ -1,28 +1,26 @@
-# =============================================================================
 # Attribution outputs (Track D.1, items 3 + 10)
 # The platform stores these per-client and matches an observed touch back to
 # the client by ARN. This is the primary attribution key — zero in-account
-# marker. Placeholders until the resources land (items 4-6).
-# =============================================================================
+# marker.
 
 output "iam_user_arns" {
   description = "ARNs of the created IAM user honeytokens, keyed by instance."
-  value       = {} # for_each = aws_iam_user.decoy : k => v.arn
+  value       = { for k, v in aws_iam_user.decoy : k => v.arn }
 }
 
 output "iam_role_arns" {
   description = "ARNs of the created IAM role honeytokens, keyed by instance."
-  value       = {}
+  value       = { for k, v in aws_iam_role.decoy : k => v.arn }
 }
 
 output "s3_bucket_arns" {
   description = "ARNs of the created S3 bucket decoys, keyed by instance."
-  value       = {}
+  value       = { for k, v in aws_s3_bucket.decoy : k => v.arn }
 }
 
 output "secret_arns" {
   description = "ARNs of the created Secrets Manager decoys, keyed by instance."
-  value       = {}
+  value       = { for k, v in aws_secretsmanager_secret.decoy : k => v.arn }
 }
 
 output "tracking_tag" {
