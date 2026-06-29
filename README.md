@@ -6,7 +6,7 @@ This Terraform module plants inert AWS decoy (honeytoken) resources into a clien
 
 ### Required Tools
 
-- **Terraform >= 1.0**
+- **Terraform >= 1.9, < 2.0**
 
   ```bash
   terraform --version
@@ -24,8 +24,8 @@ This Terraform module plants inert AWS decoy (honeytoken) resources into a clien
 The account deploying this module needs:
 
 - `iam:CreateUser`, `iam:CreateRole`, `iam:PutUserPolicy`, `iam:PutRolePolicy`, `iam:CreateAccessKey`
-- `s3:CreateBucket`, `s3:PutBucketPublicAccessBlock`, `s3:PutEncryptionConfiguration`, `s3:PutObject`
-- `secretsmanager:CreateSecret`, `secretsmanager:PutSecretValue`
+- `s3:CreateBucket`, `s3:PutBucketPublicAccessBlock`, `s3:PutEncryptionConfiguration`, `s3:PutObject`, `s3:PutBucketPolicy`, `s3:DeleteBucketPolicy`
+- `secretsmanager:CreateSecret`, `secretsmanager:PutSecretValue`, `secretsmanager:PutResourcePolicy`, `secretsmanager:DeleteResourcePolicy`
 
 Verify your identity:
 
@@ -35,10 +35,10 @@ aws sts get-caller-identity
 
 ## How It Works
 
-- **Lure model — freely IAM-reachable, internet-unreachable.** Decoys are discoverable and touchable by any over-permissioned in-account principal. They are never reachable from the public internet.
+- **Lure model — read-reachable, internet-unreachable.** Decoys are discoverable and touchable by any over-permissioned in-account principal, while deny-only resource guardrails block using them as mutable infrastructure. They are never reachable from the public internet.
 - **Identities are inert by policy, lured by name.** IAM users and roles carry a flat `Deny *` on all actions. The IAM role has a non-assumable trust policy. The bait is the intriguing name (`admin`/`poweruser`-style) combined with believable operational tags. IAM user access keys are generated as bait.
-- **No vendor reference anywhere in-account.** Nothing in names, tags, descriptions, IAM paths, or provider default-tags identifies the vendor.
-- **Attribution via outputs + tracking tag.** The platform stores the created ARNs and the caller-supplied tracking tag per client. No observer principal and no steganographic marker is placed in the account.
+- **No vendor reference anywhere in-account.** Do not use vendor/deception/decoy strings in names, tags, descriptions, IAM paths, or provider default-tags.
+- **Attribution via outputs + tracking tag.** The platform stores the created resource records and the caller-supplied tracking tag per client. No observer principal and no steganographic marker is placed in the account.
 
 ## Resource Kinds
 
@@ -46,8 +46,8 @@ aws sts get-caller-identity
 |---|---|---|
 | IAM user | Global | Flat `Deny *`, access keys generated as bait |
 | IAM role | Global | Non-assumable trust policy + flat `Deny *` |
-| S3 bucket | Per-region | Block Public Access (all 4 flags), SSE-S3, decoy object inside |
-| Secrets Manager secret | Per-region | Real-looking fake value, no restrictive resource policy |
+| S3 bucket | Per-region | Block Public Access (all 4 flags), SSE-S3, decoy object inside, deny-only mutation guardrail |
+| Secrets Manager secret | Per-region | Real-looking fake value, deny-only mutation guardrail |
 
 ## Usage
 
@@ -63,8 +63,8 @@ module "deception" {
   iam_user = { enabled = true, count = 1, name_prefix = "svc-admin" }
 }
 
-output "iam_user_arns" {
-  value = module.deception.iam_user_arns
+output "decoys" {
+  value = module.deception.decoys.iam_users
 }
 ```
 
@@ -87,6 +87,13 @@ module "deception" {
   s3_bucket = { enabled = true, count = 1, name_prefix = "legacy-backups" }
   secret    = { enabled = true, count = 1, name_prefix = "prod-db-credentials" }
 
+  # Optional additional exemptions. The current Terraform caller is exempted
+  # automatically so it can maintain/destroy guarded resources.
+  guardrail_admin_principal_arns = [
+    "arn:aws:iam::123456789012:role/TerraformAdmin",
+    "arn:aws:sts::123456789012:assumed-role/TerraformAdmin/*",
+  ]
+
   # Operational lure tags applied to every decoy resource
   lure_tags = {
     env   = "prod"
@@ -94,20 +101,8 @@ module "deception" {
   }
 }
 
-output "iam_user_arns" {
-  value = module.deception.iam_user_arns
-}
-
-output "iam_role_arns" {
-  value = module.deception.iam_role_arns
-}
-
-output "s3_bucket_arns" {
-  value = module.deception.s3_bucket_arns
-}
-
-output "secret_arns" {
-  value = module.deception.secret_arns
+output "decoys" {
+  value = module.deception.decoys
 }
 
 output "tracking_tag" {
@@ -124,6 +119,7 @@ See [`examples/basic`](examples/basic) for a runnable example.
 | `tracking_tag_key` | Yes | — | Tag key applied to every decoy resource for attribution. Should look like a normal client tag. |
 | `tracking_tag_value` | Yes | — | Tag value applied to every decoy resource for attribution. |
 | `regions` | No | `["us-east-1"]` | Regions for regional resource kinds (S3, Secrets Manager). IAM is global and ignores this. |
+| `guardrail_admin_principal_arns` | No | `[]` | Additional client IAM principal ARN patterns exempt from deny-only resource guardrails for maintenance. Current Terraform caller is exempt automatically. |
 | `iam_user` | No | `{}` (disabled) | IAM user honeytokens. `{ enabled, count, name_prefix }` |
 | `iam_role` | No | `{}` (disabled) | IAM role honeytokens. `{ enabled, count, name_prefix }` |
 | `s3_bucket` | No | `{}` (disabled) | S3 bucket decoys. `{ enabled, count, name_prefix }` |
@@ -134,10 +130,7 @@ See [`examples/basic`](examples/basic) for a runnable example.
 
 | Name | Description |
 |---|---|
-| `iam_user_arns` | ARNs of the created IAM user honeytokens, keyed by instance |
-| `iam_role_arns` | ARNs of the created IAM role honeytokens, keyed by instance |
-| `s3_bucket_arns` | ARNs of the created S3 bucket decoys, keyed by instance |
-| `secret_arns` | ARNs of the created Secrets Manager decoys, keyed by instance |
+| `decoys` | Concise attribution records: ARN, name, region, and IAM user access key ID only |
 | `tracking_tag` | The applied `{ key, value }` tracking tag, echoed for platform registration |
 
 ## Deployment
@@ -166,7 +159,7 @@ Type `yes` to confirm.
 
 ```bash
 terraform output
-terraform output iam_user_arns
+terraform output decoys
 terraform output tracking_tag
 ```
 
@@ -183,12 +176,13 @@ terraform-aws-deception/
 ├── .gitignore
 ├── README.md
 ├── versions.tf          # Terraform and provider version constraints
+├── data.tf              # Caller identity used for guardrail maintenance exemptions
 ├── variables.tf         # Module input variables
 ├── locals.tf            # Common tags and per-kind instance maps
 ├── iam.tf               # IAM users (+ access keys) and IAM roles
 ├── s3.tf                # S3 buckets, BPA, SSE, decoy objects
 ├── secrets.tf           # Secrets Manager secrets and versions
-├── outputs.tf           # Module outputs (ARNs + tracking tag)
+├── outputs.tf           # Module outputs (decoy records + tracking tag)
 └── main.tf              # Module header and design notes
 ```
 

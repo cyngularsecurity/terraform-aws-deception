@@ -12,7 +12,11 @@ on:
   push:
     branches:
       - main
-      - release/*
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   tag-and-release:
     runs-on: ubuntu-latest
@@ -20,9 +24,23 @@ jobs:
       contents: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.5
+
+      - name: Check formatting
+        run: terraform fmt -check -recursive
+
+      - name: Initialize Terraform
+        run: terraform init -backend=false
+
+      - name: Validate Terraform
+        run: terraform validate
 
       - name: Set up Git
         run: |
@@ -34,12 +52,12 @@ jobs:
         run: |
           # Fetch all tags from the remote
           git fetch --tags
-          # Get the latest tag, defaulting to v0.0.0 if no tags exist
-          latest_tag=$(git tag --sort=-v:refname | head -n 1)
+          # Get the latest semver tag, defaulting to v0.0.0 if no tags exist
+          latest_tag=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1)
           if [ -z "$latest_tag" ]; then
             latest_tag="v0.0.0"
           fi
-          echo "latest_tag=$latest_tag" >> $GITHUB_ENV
+          echo "latest_tag=$latest_tag" >> "$GITHUB_ENV"
           echo "Latest tag found: $latest_tag"
 
       - name: Calculate new version
@@ -63,19 +81,19 @@ jobs:
           # Check if the new version already exists
           if git rev-parse "$new_version" >/dev/null 2>&1; then
             echo "Tag $new_version already exists. Skipping tag creation."
-            echo "tag_exists=true" >> $GITHUB_ENV
+            echo "tag_exists=true" >> "$GITHUB_ENV"
           else
-            echo "tag_exists=false" >> $GITHUB_ENV
+            echo "tag_exists=false" >> "$GITHUB_ENV"
           fi
 
-          echo "new_version=$new_version" >> $GITHUB_ENV
+          echo "new_version=$new_version" >> "$GITHUB_ENV"
           echo "New version is $new_version"
 
       - name: Create new tag
         if: env.tag_exists == 'false'
         run: |
-          git tag ${{ env.new_version }}
-          git push origin ${{ env.new_version }}
+          git tag "${{ env.new_version }}"
+          git push origin "${{ env.new_version }}"
 
       - name: Create GitHub release
         if: env.tag_exists == 'false'

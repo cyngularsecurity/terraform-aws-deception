@@ -32,6 +32,8 @@ resource "aws_iam_access_key" "decoy" {
   for_each = local.iam_user_instances
 
   user = aws_iam_user.decoy[each.key].name
+
+  depends_on = [aws_iam_user_policy.deny_all]
 }
 
 # IAM role honeytokens — empty trust policy + flat Deny *.
@@ -46,7 +48,7 @@ resource "aws_iam_role" "decoy" {
 
   name = "${var.iam_role.name_prefix}-${random_id.iam_role[each.key].hex}"
 
-  # Non-existent account — trust policy is valid but nobody can assume this role.
+  # Deny-all trust policy: the role exists but nobody can assume it.
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{

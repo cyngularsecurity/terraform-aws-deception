@@ -2,7 +2,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = ">= 5.0"
+      version = ">= 6.52, < 7.0"
     }
   }
 }
@@ -26,6 +26,6 @@ module "deception" {
   secret    = { enabled = true, count = 1, name_prefix = "prod-db-credentials" }
 }
 
-output "decoy_iam_user_arns" {
-  value = module.deception.iam_user_arns
+output "decoys" {
+  value = module.deception.decoys
 }
