@@ -32,6 +32,8 @@ resource "aws_iam_access_key" "decoy" {
   for_each = local.iam_user_instances
 
   user = aws_iam_user.decoy[each.key].name
+
+  depends_on = [aws_iam_user_policy.deny_all]
 }
 
 # IAM role honeytokens — empty trust policy + flat Deny *.

@@ -1,24 +1,31 @@
 # Attribution outputs: the platform stores these per-client and matches an
-# observed touch back to the client by ARN — the primary, in-account-marker-free key.
+# observed touch back to the client by ARN/name without any in-account marker.
 
-output "iam_user_arns" {
-  description = "ARNs of the created IAM user honeytokens, keyed by instance."
-  value       = { for k, v in aws_iam_user.decoy : k => v.arn }
-}
-
-output "iam_role_arns" {
-  description = "ARNs of the created IAM role honeytokens, keyed by instance."
-  value       = { for k, v in aws_iam_role.decoy : k => v.arn }
-}
-
-output "s3_bucket_arns" {
-  description = "ARNs of the created S3 bucket decoys, keyed by instance."
-  value       = { for k, v in aws_s3_bucket.decoy : k => v.arn }
-}
-
-output "secret_arns" {
-  description = "ARNs of the created Secrets Manager decoys, keyed by instance."
-  value       = { for k, v in aws_secretsmanager_secret.decoy : k => v.arn }
+output "decoys" {
+  description = "Created decoy attribution records. IAM access_key_id is non-secret; the secret access key is never output."
+  value = {
+    iam_users = { for k, v in aws_iam_user.decoy : k => {
+      arn           = v.arn
+      name          = v.name
+      region        = "global"
+      access_key_id = aws_iam_access_key.decoy[k].id
+    } }
+    iam_roles = { for k, v in aws_iam_role.decoy : k => {
+      arn    = v.arn
+      name   = v.name
+      region = "global"
+    } }
+    s3_buckets = { for k, v in aws_s3_bucket.decoy : k => {
+      arn    = v.arn
+      name   = v.bucket
+      region = local.s3_instances[k].region
+    } }
+    secrets = { for k, v in aws_secretsmanager_secret.decoy : k => {
+      arn    = v.arn
+      name   = v.name
+      region = local.secret_instances[k].region
+    } }
+  }
 }
 
 output "tracking_tag" {

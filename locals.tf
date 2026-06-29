@@ -6,6 +6,30 @@ locals {
     { (var.tracking_tag_key) = var.tracking_tag_value },
   )
 
+  current_assumed_role_matches = regexall("^arn:[^:]+:sts::[0-9]+:assumed-role/([^/]+)/.*$", data.aws_caller_identity.current.arn)
+  current_assumed_role_name    = length(local.current_assumed_role_matches) > 0 ? local.current_assumed_role_matches[0][0] : null
+
+  current_guardrail_admin_principal_arns = concat(
+    [data.aws_caller_identity.current.arn],
+    local.current_assumed_role_name == null ? [] : [
+      "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:role/${local.current_assumed_role_name}",
+      "arn:${data.aws_partition.current.partition}:sts::${data.aws_caller_identity.current.account_id}:assumed-role/${local.current_assumed_role_name}/*",
+    ],
+  )
+
+  guardrail_admin_principal_arns = distinct(concat(
+    local.current_guardrail_admin_principal_arns,
+    var.guardrail_admin_principal_arns,
+  ))
+
+  guardrail_admin_exemption = {
+    Condition = {
+      ArnNotLike = {
+        "aws:PrincipalArn" = local.guardrail_admin_principal_arns
+      }
+    }
+  }
+
   iam_user_instances = var.iam_user.enabled ? {
     for i in range(var.iam_user.count) : tostring(i) => i
   } : {}
