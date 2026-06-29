@@ -1,7 +1,5 @@
-# Attribution outputs (Track D.1, items 3 + 10)
-# The platform stores these per-client and matches an observed touch back to
-# the client by ARN. This is the primary attribution key — zero in-account
-# marker.
+# Attribution outputs: the platform stores these per-client and matches an
+# observed touch back to the client by ARN — the primary, in-account-marker-free key.
 
 output "iam_user_arns" {
   description = "ARNs of the created IAM user honeytokens, keyed by instance."

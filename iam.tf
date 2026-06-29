@@ -46,7 +46,7 @@ resource "aws_iam_role" "decoy" {
 
   name = "${var.iam_role.name_prefix}-${random_id.iam_role[each.key].hex}"
 
-  # Non-existent account — trust policy is valid but nobody can assume this role.
+  # Deny-all trust policy: the role exists but nobody can assume it.
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{

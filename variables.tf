@@ -15,10 +15,7 @@ variable "regions" {
   }
 }
 
-# --- Tracking tag (attribution supplement, item 10) -------------------------
-# Key ideally mimics a tag the client already uses; value is something the
-# detection owner recognizes. Both are caller-supplied — no hardcoded
-# convention, no Cyngular string baked in.
+# --- Tracking tag (attribution supplement) ---------------------------------
 variable "tracking_tag_key" {
   description = "Tag key applied to every decoy resource for attribution. Should look like a normal client tag."
   type        = string
@@ -29,9 +26,8 @@ variable "tracking_tag_value" {
   type        = string
 }
 
-# --- Per-kind enable + count + names ----------------------------------------
-# Each kind: enable flag, count, and a name prefix the instances derive from.
-# Names must be intriguing-but-generic (admin/poweruser-style); no
+# --- Per-kind enable + count + name prefix ----------------------------------
+# name_prefix must be intriguing-but-generic (admin/poweruser-style); no
 # deception/decoy/cyngular token anywhere.
 
 variable "iam_user" {
@@ -42,6 +38,15 @@ variable "iam_user" {
     name_prefix = optional(string, "")
   })
   default = {}
+
+  validation {
+    condition     = !var.iam_user.enabled || var.iam_user.count >= 1
+    error_message = "iam_user.count must be >= 1 when iam_user.enabled is true."
+  }
+  validation {
+    condition     = !var.iam_user.enabled || length(var.iam_user.name_prefix) > 0
+    error_message = "iam_user.name_prefix must be non-empty when iam_user.enabled is true."
+  }
 }
 
 variable "iam_role" {
@@ -52,6 +57,15 @@ variable "iam_role" {
     name_prefix = optional(string, "")
   })
   default = {}
+
+  validation {
+    condition     = !var.iam_role.enabled || var.iam_role.count >= 1
+    error_message = "iam_role.count must be >= 1 when iam_role.enabled is true."
+  }
+  validation {
+    condition     = !var.iam_role.enabled || length(var.iam_role.name_prefix) > 0
+    error_message = "iam_role.name_prefix must be non-empty when iam_role.enabled is true."
+  }
 }
 
 variable "s3_bucket" {
@@ -62,6 +76,17 @@ variable "s3_bucket" {
     name_prefix = optional(string, "")
   })
   default = {}
+
+  validation {
+    condition     = !var.s3_bucket.enabled || var.s3_bucket.count >= 1
+    error_message = "s3_bucket.count must be >= 1 when s3_bucket.enabled is true."
+  }
+  # Prefix gets a "-<8 hex>" suffix; constrain it so the 3-63 char DNS-safe
+  # S3 bucket naming rules always hold.
+  validation {
+    condition     = !var.s3_bucket.enabled || can(regex("^[a-z0-9][a-z0-9.-]{0,53}$", var.s3_bucket.name_prefix))
+    error_message = "s3_bucket.name_prefix must be 1-54 chars, start with a lowercase letter or digit, and contain only lowercase letters, digits, hyphens, or dots (S3 bucket naming rules)."
+  }
 }
 
 variable "secret" {
@@ -72,6 +97,15 @@ variable "secret" {
     name_prefix = optional(string, "")
   })
   default = {}
+
+  validation {
+    condition     = !var.secret.enabled || var.secret.count >= 1
+    error_message = "secret.count must be >= 1 when secret.enabled is true."
+  }
+  validation {
+    condition     = !var.secret.enabled || length(var.secret.name_prefix) > 0
+    error_message = "secret.name_prefix must be non-empty when secret.enabled is true."
+  }
 }
 
 # --- Lure / operational tags ------------------------------------------------

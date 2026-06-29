@@ -3,12 +3,13 @@ terraform {
 
   required_providers {
     aws = {
-      source  = "hashicorp/aws"
-      version = ">= 5.0"
+      source = "hashicorp/aws"
+      # >= 6.0 required: regional kinds use per-resource `region`.
+      version = ">= 6.52"
     }
     random = {
       source  = "hashicorp/random"
-      version = ">= 3.5"
+      version = ">= 3.9"
     }
   }
 }

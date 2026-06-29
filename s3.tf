@@ -9,6 +9,7 @@ resource "random_id" "s3_bucket" {
 resource "aws_s3_bucket" "decoy" {
   for_each = local.s3_instances
 
+  region        = each.value.region
   bucket        = "${var.s3_bucket.name_prefix}-${random_id.s3_bucket[each.key].hex}"
   force_destroy = true
   tags          = local.common_tags
@@ -17,6 +18,7 @@ resource "aws_s3_bucket" "decoy" {
 resource "aws_s3_bucket_public_access_block" "decoy" {
   for_each = local.s3_instances
 
+  region = each.value.region
   bucket = aws_s3_bucket.decoy[each.key].id
 
   block_public_acls       = true
@@ -28,6 +30,7 @@ resource "aws_s3_bucket_public_access_block" "decoy" {
 resource "aws_s3_bucket_server_side_encryption_configuration" "decoy" {
   for_each = local.s3_instances
 
+  region = each.value.region
   bucket = aws_s3_bucket.decoy[each.key].id
 
   rule {
@@ -40,6 +43,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "decoy" {
 resource "aws_s3_object" "decoy" {
   for_each = local.s3_instances
 
+  region       = each.value.region
   bucket       = aws_s3_bucket.decoy[each.key].id
   key          = "credentials.json"
   content_type = "application/json"

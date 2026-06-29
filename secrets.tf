@@ -9,6 +9,7 @@ resource "random_id" "secret" {
 resource "aws_secretsmanager_secret" "decoy" {
   for_each = local.secret_instances
 
+  region                  = each.value.region
   name                    = "${var.secret.name_prefix}-${random_id.secret[each.key].hex}"
   recovery_window_in_days = 0
   tags                    = local.common_tags
@@ -17,6 +18,7 @@ resource "aws_secretsmanager_secret" "decoy" {
 resource "aws_secretsmanager_secret_version" "decoy" {
   for_each = local.secret_instances
 
+  region    = each.value.region
   secret_id = aws_secretsmanager_secret.decoy[each.key].id
 
   secret_string = jsonencode({

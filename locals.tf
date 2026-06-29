@@ -1,7 +1,6 @@
 
 locals {
-  # Common tags = lure tags + the caller-supplied tracking tag.
-  # Deliberately NO default_tags on the provider and NO Cyngular string.
+  # Lure tags + tracking tag. No provider default_tags, no Cyngular string (cover).
   common_tags = merge(
     var.lure_tags,
     { (var.tracking_tag_key) = var.tracking_tag_value },
@@ -15,9 +14,7 @@ locals {
     for i in range(var.iam_role.count) : tostring(i) => i
   } : {}
 
-  # S3 and Secrets fan out over regions × count. Multi-region deployment
-  # requires the caller to invoke this module once per region with the
-  # matching provider configured for that region.
+  # S3 and Secrets fan out over regions × count; each instance carries its region.
   s3_instances = var.s3_bucket.enabled ? {
     for pair in setproduct(toset(var.regions), range(var.s3_bucket.count)) :
     "${pair[0]}-${pair[1]}" => { region = tostring(pair[0]), index = tonumber(pair[1]) }
