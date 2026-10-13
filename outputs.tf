@@ -1,8 +1,3 @@
-# Attribution outputs (Track D.1, items 3 + 10)
-# The platform stores these per-client and matches an observed touch back to
-# the client by ARN. This is the primary attribution key — zero in-account
-# marker.
-
 output "iam_user_arns" {
   description = "ARNs of the created IAM user honeytokens, keyed by instance."
   value       = { for k, v in aws_iam_user.decoy : k => v.arn }
@@ -29,4 +24,14 @@ output "tracking_tag" {
     key   = var.tracking_tag_key
     value = var.tracking_tag_value
   }
+}
+
+output "decoy_scripts_bucket_arns" {
+  description = "ARNs of the decoy DevOps-scripts buckets, keyed by region."
+  value       = { for r, b in aws_s3_bucket.scripts : r => b.arn }
+}
+
+output "decoy_scripts_object_paths" {
+  description = "Planted script object keys (the same set exists in every regional scripts bucket)."
+  value       = [for f in local.scripts_selected : local.script_paths[f]]
 }
