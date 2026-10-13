@@ -2,7 +2,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = ">= 5.0"
+      version = ">= 6.0"
     }
   }
 }
@@ -15,7 +15,7 @@ module "deception" {
   source = "cyngularsecurity/deception/aws"
   # version = "x.y.z"  # pin once published to the registry
 
-  regions = ["us-east-1"]
+  regions = ["us-east-1", "eu-west-1"]
 
   tracking_tag_key   = "cost-center"
   tracking_tag_value = "CC-9042"

@@ -13,6 +13,10 @@ variable "regions" {
     condition     = length(var.regions) > 0
     error_message = "At least one region is required."
   }
+  validation {
+    condition     = length(var.regions) == length(toset(var.regions))
+    error_message = "regions must not contain duplicates (duplicate regions break the S3/Secrets fan-out keys)."
+  }
 }
 
 # --- Tracking tag (attribution supplement, item 10) -------------------------
@@ -81,5 +85,38 @@ variable "lure_tags" {
   default = {
     env   = "prod"
     owner = "legacy-team"
+  }
+}
+
+variable "decoy_scripts" {
+  description = "Decoy DevOps scripts: an S3 bucket of realistic Python scripts with an embedded honeytoken. token_type selects a fake GitLab token, a fake AWS key, or the module's real-but-inert IAM user access key (iam_user_key requires iam_user.enabled with count > 0). A deterministic, account-varied subset of the bundled templates is planted at randomized paths. Fans out over var.regions."
+  type = object({
+    enabled      = optional(bool, false)
+    name_prefix  = optional(string, "devops-scripts")
+    script_count = optional(number, 3)
+    token_type   = optional(string, "gitlab") # gitlab | aws | iam_user_key
+  })
+  default = {}
+
+  validation {
+    condition     = contains(["gitlab", "aws", "iam_user_key"], var.decoy_scripts.token_type)
+    error_message = "decoy_scripts.token_type must be one of: gitlab, aws, iam_user_key."
+  }
+  validation {
+    condition     = var.decoy_scripts.script_count >= 1 && var.decoy_scripts.script_count <= 20
+    error_message = "decoy_scripts.script_count must be between 1 and 20."
+  }
+  # Bucket name = "${name_prefix}-${4-hex}-${region}"; S3 allows [a-z0-9.-], 3-63 chars.
+  validation {
+    condition     = can(regex("^[a-z0-9][a-z0-9.-]{0,29}$", var.decoy_scripts.name_prefix))
+    error_message = "decoy_scripts.name_prefix must start with a letter or number, contain only [a-z0-9.-], and be ≤30 chars (S3 bucket-name rules)."
+  }
+  validation {
+    condition     = !can(regex("^(xn--|sthree-)", var.decoy_scripts.name_prefix))
+    error_message = "decoy_scripts.name_prefix must not start with 'xn--' or 'sthree-' (S3 bucket-name restriction)."
+  }
+  validation {
+    condition     = !can(regex("(?i)(cyngular|deception|decoy|honeytoken|bait|trap|observer)", var.decoy_scripts.name_prefix))
+    error_message = "decoy_scripts.name_prefix must not contain reserved words: cyngular, deception, decoy, honeytoken, bait, trap, observer."
   }
 }

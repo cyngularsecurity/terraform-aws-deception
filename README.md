@@ -6,7 +6,7 @@ This Terraform module plants inert AWS decoy (honeytoken) resources into a clien
 
 ### Required Tools
 
-- **Terraform >= 1.0**
+- **Terraform >= 1.2** and **AWS provider >= 6.0** (per-resource `region` argument for multi-region fan-out)
 
   ```bash
   terraform --version
@@ -24,7 +24,7 @@ This Terraform module plants inert AWS decoy (honeytoken) resources into a clien
 The account deploying this module needs:
 
 - `iam:CreateUser`, `iam:CreateRole`, `iam:PutUserPolicy`, `iam:PutRolePolicy`, `iam:CreateAccessKey`
-- `s3:CreateBucket`, `s3:PutBucketPublicAccessBlock`, `s3:PutEncryptionConfiguration`, `s3:PutObject`
+- `s3:CreateBucket`, `s3:PutBucketPublicAccessBlock`, `s3:PutEncryptionConfiguration`, `s3:PutBucketTagging`, `s3:PutObject`, `s3:PutObjectTagging`
 - `secretsmanager:CreateSecret`, `secretsmanager:PutSecretValue`
 
 Verify your identity:
@@ -48,6 +48,25 @@ aws sts get-caller-identity
 | IAM role | Global | Non-assumable trust policy + flat `Deny *` |
 | S3 bucket | Per-region | Block Public Access (all 4 flags), SSE-S3, decoy object inside |
 | Secrets Manager secret | Per-region | Real-looking fake value, no restrictive resource policy |
+| Decoy DevOps scripts | Per-region | S3 bucket (BPA + SSE-S3) of Python scripts with an embedded fake GitLab/AWS token or the inert IAM user access key |
+
+Passwords in the S3 decoy object and the Secrets Manager decoy are generated with `random_password`. Nothing in the module is a hardcoded credential.
+
+### Regions
+
+Regional kinds (S3 decoys, Secrets Manager decoys, decoy-scripts buckets) are created in every entry of `regions` from a **single module call**. Each resource sets the per-resource `region` argument (AWS provider >= 6.0), so the provider's own `region` only matters for IAM, which is global. Duplicate regions are rejected at plan time.
+
+### Decoy DevOps Scripts
+
+When `decoy_scripts.enabled = true`, the module creates one S3 bucket per region named `<name_prefix>-<4 hex>-<region>`. It plants `script_count` Python scripts from [`templates/scripts`](templates/scripts) in each bucket. Each script carries one honeytoken, set by `token_type`:
+
+| `token_type` | Embedded credential |
+|---|---|
+| `gitlab` (default) | Fake `GITLAB_TOKEN = "glpat-…"` |
+| `aws` | Fake `AWS_ACCESS_KEY_ID = "AKIA…"` / `AWS_SECRET_ACCESS_KEY` pair |
+| `iam_user_key` | The real access key of one of the module's IAM users. The user carries a flat `Deny *`, so the key is inert. Requires `iam_user.enabled = true` and `count > 0`. Keys are assigned round-robin across scripts. |
+
+The account ID decides which templates are used and the folder each script lands in (`ci/`, `tools/`, `scripts/deploy/`, `internal/jobs/` or the bucket root). Each account gets a different selection, but re-running plan never reshuffles it. Every regional bucket holds the same set of scripts at the same paths.
 
 ## Usage
 
@@ -74,8 +93,8 @@ output "iam_user_arns" {
 module "deception" {
   source  = "cyngularsecurity/deception/aws"
 
-  # Regions for S3 and Secrets Manager (IAM is global)
-  regions = ["us-east-1"]
+  # Regions for S3, Secrets Manager and decoy scripts (IAM is global)
+  regions = ["us-east-1", "eu-west-1"]
 
   # Attribution tag — should look like a normal client tag
   tracking_tag_key   = "cost-center"
@@ -86,6 +105,14 @@ module "deception" {
   iam_role  = { enabled = true, count = 1, name_prefix = "poweruser" }
   s3_bucket = { enabled = true, count = 1, name_prefix = "legacy-backups" }
   secret    = { enabled = true, count = 1, name_prefix = "prod-db-credentials" }
+
+  # Bucket of DevOps scripts with an embedded honeytoken
+  decoy_scripts = {
+    enabled      = true
+    name_prefix  = "devops-scripts"
+    script_count = 3
+    token_type   = "iam_user_key" # gitlab | aws | iam_user_key
+  }
 
   # Operational lure tags applied to every decoy resource
   lure_tags = {
@@ -110,12 +137,16 @@ output "secret_arns" {
   value = module.deception.secret_arns
 }
 
+output "decoy_scripts_bucket_arns" {
+  value = module.deception.decoy_scripts_bucket_arns
+}
+
 output "tracking_tag" {
   value = module.deception.tracking_tag
 }
 ```
 
-See [`examples/basic`](examples/basic) for a runnable example.
+See [`examples/basic`](examples/basic) for a runnable example, and [`docs/architecture.md`](docs/architecture.md) for how the module works.
 
 ## Variables
 
@@ -123,11 +154,12 @@ See [`examples/basic`](examples/basic) for a runnable example.
 |---|---|---|---|
 | `tracking_tag_key` | Yes | — | Tag key applied to every decoy resource for attribution. Should look like a normal client tag. |
 | `tracking_tag_value` | Yes | — | Tag value applied to every decoy resource for attribution. |
-| `regions` | No | `["us-east-1"]` | Regions for regional resource kinds (S3, Secrets Manager). IAM is global and ignores this. |
+| `regions` | No | `["us-east-1"]` | Regions for regional resource kinds (S3, Secrets Manager, decoy scripts), deployed from a single module call regardless of the provider's region. IAM is global and ignores this. No duplicates. |
 | `iam_user` | No | `{}` (disabled) | IAM user honeytokens. `{ enabled, count, name_prefix }` |
 | `iam_role` | No | `{}` (disabled) | IAM role honeytokens. `{ enabled, count, name_prefix }` |
 | `s3_bucket` | No | `{}` (disabled) | S3 bucket decoys. `{ enabled, count, name_prefix }` |
 | `secret` | No | `{}` (disabled) | Secrets Manager decoys. `{ enabled, count, name_prefix }` |
+| `decoy_scripts` | No | `{}` (disabled) | Decoy DevOps scripts buckets. `{ enabled, name_prefix = "devops-scripts", script_count = 3, token_type = "gitlab" \| "aws" \| "iam_user_key" }`. `script_count` is 1–20 (capped at the number of bundled templates). `name_prefix` must follow S3 bucket-name rules, be at most 30 characters, and avoid the reserved words `cyngular`, `deception`, `decoy`, `honeytoken`, `bait`, `trap` and `observer`. |
 | `lure_tags` | No | `{ env = "prod", owner = "legacy-team" }` | Believable operational tags applied to every decoy resource. |
 
 ## Outputs
@@ -138,6 +170,8 @@ See [`examples/basic`](examples/basic) for a runnable example.
 | `iam_role_arns` | ARNs of the created IAM role honeytokens, keyed by instance |
 | `s3_bucket_arns` | ARNs of the created S3 bucket decoys, keyed by instance |
 | `secret_arns` | ARNs of the created Secrets Manager decoys, keyed by instance |
+| `decoy_scripts_bucket_arns` | ARNs of the decoy DevOps-scripts buckets, keyed by region |
+| `decoy_scripts_object_paths` | Planted script object keys (same set in every regional bucket) |
 | `tracking_tag` | The applied `{ key, value }` tracking tag, echoed for platform registration |
 
 ## Deployment
@@ -176,20 +210,23 @@ terraform output tracking_tag
 ```
 terraform-aws-deception/
 ├── examples/
-│   └── basic/           # Runnable example configuration
+│   └── basic/              # Runnable example configuration
+├── templates/
+│   └── scripts/            # Python script templates for decoy_scripts
 ├── .github/
 │   └── workflows/
 │       └── publish_tf_module.yml  # Auto-tag and release on push to main
 ├── .gitignore
 ├── README.md
-├── versions.tf          # Terraform and provider version constraints
-├── variables.tf         # Module input variables
-├── locals.tf            # Common tags and per-kind instance maps
-├── iam.tf               # IAM users (+ access keys) and IAM roles
-├── s3.tf                # S3 buckets, BPA, SSE, decoy objects
-├── secrets.tf           # Secrets Manager secrets and versions
-├── outputs.tf           # Module outputs (ARNs + tracking tag)
-└── main.tf              # Module header and design notes
+├── main.tf                 # Terraform and provider version constraints
+├── variables.tf            # Module input variables
+├── locals.tf               # Common tags and per-kind instance maps
+├── iam.tf                  # IAM users (+ access keys) and IAM roles
+├── s3_decoys.tf            # S3 decoy buckets, BPA, SSE, decoy objects
+├── secrets.tf              # Secrets Manager secrets and versions
+├── decoy_scripts.tf        # Script selection, paths and honeytokens
+├── s3_decoy_scripts.tf     # Decoy-scripts S3 buckets and script objects
+└── outputs.tf              # Module outputs (ARNs, script paths, tracking tag)
 ```
 
 ## Cleanup
@@ -215,6 +252,18 @@ aws configure
 ### `AccessDenied` on IAM or S3 resources
 
 The deploying principal lacks the required permissions. Verify the permissions listed in the [Prerequisites](#prerequisites) section or contact your AWS administrator.
+
+### `Unsupported argument: region` or provider version conflict
+
+The module needs AWS provider >= 6.0 for the per-resource `region` argument. Upgrade the provider in the calling configuration:
+
+```bash
+terraform init -upgrade
+```
+
+### `decoy_scripts.token_type = iam_user_key requires iam_user.enabled = true`
+
+`iam_user_key` embeds an IAM user's access key in the scripts, so at least one IAM user must exist. Enable `iam_user` with `count > 0`, or use `token_type = "gitlab"` or `"aws"`.
 
 ### Secrets Manager deletion delay
 
